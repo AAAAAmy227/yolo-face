@@ -96,10 +96,10 @@ def main():
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {n_params:,}")
 
-    optimizer = torch.optim.SGD(
-        model.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=args.lr, weight_decay=5e-4
     )
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 50, 100], gamma=0.5)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
     writer = SummaryWriter(args.log_dir) if _has_tb else None
 
@@ -128,6 +128,7 @@ def main():
             loss = yolo_loss(preds, targets)
             optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0)
             optimizer.step()
             epoch_loss += loss.item() * images.size(0)
 

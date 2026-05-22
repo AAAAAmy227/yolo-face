@@ -197,7 +197,7 @@ def create_dataloaders(
     """Build train + val DataLoaders. Training gets filtering + flip augmentation."""
     train_ds = FaceDatasetYOLO(
         root, "train", img_size, S, B, C,
-        max_samples=train_samples, augment=True, max_faces=5,
+        max_samples=train_samples, augment=True, max_faces=15,
     )
     val_ds = FaceDatasetYOLO(
         root, "val", img_size, S, B, C,
