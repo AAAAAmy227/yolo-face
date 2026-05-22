@@ -16,3 +16,9 @@ logs/
 *.txt
 
 *.pth
+
+*.png
+
+report.md
+
+*.json

@@ -139,7 +139,7 @@ def nms(boxes, iou_thresh=0.5):
 
 
 def average_precision(pred_boxes, gt_boxes, iou_thresh=0.5):
-    """Precision at given IoU threshold for a single image."""
+    """Per-image precision at given IoU (used for training monitoring only)."""
     if not gt_boxes:
         return float("nan")
     if not pred_boxes:
@@ -161,3 +161,78 @@ def average_precision(pred_boxes, gt_boxes, iou_thresh=0.5):
         else:
             fp += 1
     return tp / (tp + fp) if tp else 0.0
+
+
+def collect_pr_data(pred_boxes_list, gt_boxes_list, iou_thresh=0.5):
+    """Collect confidence and TP/FP across all images for PR curve computation.
+
+    Args:
+        pred_boxes_list: list of lists, each [x1,y1,x2,y2,score] per image.
+        gt_boxes_list:   list of lists, each [x1,y1,x2,y2] per image.
+
+    Returns:
+        (confs, tps, num_gt): arrays of confidences, TP flags, and total GT count.
+    """
+    confs, tps = [], []
+    total_gt = 0
+
+    for pred_boxes, gt_boxes in zip(pred_boxes_list, gt_boxes_list):
+        total_gt += len(gt_boxes)
+        if not pred_boxes:
+            continue
+        pred_boxes = sorted(pred_boxes, key=lambda x: x[4], reverse=True)
+        gt_matched = [False] * len(gt_boxes)
+
+        for pb in pred_boxes:
+            best_iou = 0
+            best_idx = -1
+            for j, gb in enumerate(gt_boxes):
+                if not gt_matched[j]:
+                    d = iou(pb, gb)
+                    if d > best_iou:
+                        best_iou = d
+                        best_idx = j
+            if best_iou >= iou_thresh and best_idx >= 0:
+                confs.append(pb[4])
+                tps.append(1)
+                gt_matched[best_idx] = True
+            else:
+                confs.append(pb[4])
+                tps.append(0)
+
+    return confs, tps, total_gt
+
+
+def compute_ap(confs, tps, num_gt):
+    """Compute Average Precision (area under PR curve) via 11-point interpolation.
+
+    Args:
+        confs: list of prediction confidences (sorted descending by caller).
+        tps:   list of 1/0 TP flags, aligned with confs.
+        num_gt: total number of ground-truth boxes across the dataset.
+
+    Returns:
+        AP value (float), and lists of (precision, recall) points for plotting.
+    """
+    if not confs or num_gt == 0:
+        return 0.0, [], []
+
+    # Sort by confidence descending
+    paired = sorted(zip(confs, tps), key=lambda x: x[0], reverse=True)
+    tps = [p[1] for p in paired]
+
+    cum_tp = 0
+    precisions, recalls = [], []
+    for i, tp in enumerate(tps):
+        cum_tp += tp
+        fp = (i + 1) - cum_tp
+        precisions.append(cum_tp / (cum_tp + fp) if (cum_tp + fp) > 0 else 0)
+        recalls.append(cum_tp / num_gt)
+
+    # 11-point interpolation AP
+    ap = 0.0
+    for t in [i / 10.0 for i in range(11)]:
+        p = max((p for p, r in zip(precisions, recalls) if r >= t), default=0)
+        ap += p / 11
+
+    return ap, precisions, recalls
